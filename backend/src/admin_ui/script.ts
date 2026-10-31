@@ -63,7 +63,8 @@ export const ADMIN_JS = String.raw`
   }
   function api(method, path, body, retry) {
     var opts = { method: method, headers: { Authorization: 'Bearer ' + S.access } };
-    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    if (body instanceof Blob) { opts.headers['Content-Type'] = body.type; opts.body = body; } // a photo, sent as it is
+    else if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     // Photo and video uploads live at the server root (/media/...); everything else is under /api/v1.
     return fetch((path.indexOf('/media/') === 0 ? '' : API) + path, opts).then(function (r) {
       if (r.status === 401 && !retry) {
