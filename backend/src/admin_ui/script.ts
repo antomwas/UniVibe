@@ -64,7 +64,8 @@ export const ADMIN_JS = String.raw`
   function api(method, path, body, retry) {
     var opts = { method: method, headers: { Authorization: 'Bearer ' + S.access } };
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-    return fetch(API + path, opts).then(function (r) {
+    // Photo and video uploads live at the server root (/media/...); everything else is under /api/v1.
+    return fetch((path.indexOf('/media/') === 0 ? '' : API) + path, opts).then(function (r) {
       if (r.status === 401 && !retry) {
         return refreshSession().then(function (ok) {
           if (!ok) { signOut(); throw new Error('Your session ended. Please sign in again.'); }
