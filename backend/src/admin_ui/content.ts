@@ -26,7 +26,11 @@ export const CONTENT_JS = String.raw`
   // The file goes straight to storage through a short-lived signed link, then the server checks what actually arrived.
   function uploadFile(file, purpose) {
     return api('POST', '/media/uploads', { kind: 'image', purpose: purpose, contentType: file.type, size: file.size }).then(function (u) {
-      return fetch(u.uploadUrl, { method: 'PUT', headers: u.headers, body: file }).then(function (r) {
+      return fetch(u.uploadUrl, { method: 'PUT', headers: u.headers, body: file }).catch(function () {
+        // fetch only rejects when the browser never got an answer: a blocked cross-site request or an unreachable host.
+        var host = ''; try { host = new URL(u.uploadUrl).host; } catch (e) { host = ''; }
+        throw new Error('The browser could not reach storage' + (host ? ' (' + host + ')' : '') + '. Usually the bucket CORS policy or the R2 address is wrong.');
+      }).then(function (r) {
         if (!r.ok) throw new Error('Storage refused the upload (' + r.status + '). Check that storage allows uploads from this page.');
         return api('POST', '/media/' + u.mediaId + '/complete', {});
       }).then(function () { return u.mediaId; });
