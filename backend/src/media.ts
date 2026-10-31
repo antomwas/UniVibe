@@ -168,6 +168,28 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: RouteContext): vo
     });
   });
 
+  // Browser uploads (the staff admin page) send the photo to this server instead of straight to storage, so they do not
+  // depend on the bucket allowing cross-site requests. The app keeps using the signed link above.
+  app.addContentTypeParser(['image/jpeg', 'image/png', 'image/webp'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+
+  /** Step 1b (alternative to the signed link): the photo itself, from a browser. Photos only; step 2 then checks it as usual. */
+  app.put('/media/:id/content', { bodyLimit: MEDIA_LIMITS.image.maxBytes }, async (req, reply) => {
+    const user = await ctx.requireUser(req);
+    const storage = needStorage(ctx);
+    ctx.tooMany(`media-put:${user.id}`, 60, 3600);
+    const id = paramId(req);
+    const { rows } = await pool.query<{ kind: string; content_type: string; object_key: string; status: string }>(
+      'select kind, content_type, object_key, status from media where id = $1 and owner_id = $2', [id, user.id]);
+    const m = rows[0];
+    if (!m || m.kind !== 'image') throw new HttpError(404, 'not_found', 'That upload was not found.');
+    if (m.status !== 'pending') throw new HttpError(409, 'conflict', 'That upload was already finished.');
+    const bytes = req.body as Buffer | undefined;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) throw new HttpError(400, 'validation', 'The file did not arrive. Please try again.');
+    if (String(req.headers['content-type'] ?? '').split(';')[0].trim() !== m.content_type) throw new HttpError(400, 'validation', 'The file type does not match.');
+    await storage.write(m.object_key, new Uint8Array(bytes), m.content_type);
+    return reply.status(204).send();
+  });
+
   /** Step 2: after the upload, the server checks what actually arrived before the file can be used anywhere. */
   app.post('/media/:id/complete', async (req) => {
     const user = await ctx.requireUser(req);
